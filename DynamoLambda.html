@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulario</title>
+</head>
+<body>
+    <h1>Formulario</h1>
+    <form id="form">
+        <label for="cedula">Cédula:</label>
+        <input type="text" id="cedula" name="cedula" required>
+        <label for="nombre">Nombre:</label>
+        <input type="text" id="nombre" name="nombre" required>
+        <label for="apellido">Apellido:</label>
+        <input type="text" id="apellido" name="apellido" required>
+        <label for="apellido">Correo:</label>
+        <input type="text" id="correo" name="correo" required>
+        <label for="Foto">Foto:</label>
+        <input type="file" id="fileInput" accept="image/*" />
+        <button type="button" onclick="enviar()">Enviar</button>
+    </form>
+    <p id="result"></p>
+
+    <h2>Lista de usuarios:</h2>
+    <ul id="usersList"></ul>
+
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.953.0.min.js"></script>
+    <script>
+
+        AWS.config.update({
+            accessKeyId: '',
+            secretAccessKey: '',
+            sessionToken: '',
+            region: 'us-east-1'
+        });
+
+        const s3 = new AWS.S3();
+
+        async function enviar() {
+
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Por favor, sube una imagen');
+                return;
+            }
+            const validImageTypes = ['image/gif', 'image/jpeg', 'image/png'];
+
+            const params = {
+                Bucket: 'dynamo-lambda-fotos',
+                Key: file.name,
+                Body: file,
+                ContentType: file.type,
+                ACL: 'public-read' 
+            };
+
+            s3.upload(params, async (err, data) => {
+                if (err) {
+                    console.log(err);
+                } else {
+                    const foto = data.Location;
+                    const cedula = document.getElementById('cedula').value;
+                    const nombre = document.getElementById('nombre').value;
+                    const correo = document.getElementById('correo').value;
+                    const apellido = document.getElementById('apellido').value;
+
+                    try {
+                        const response = await fetch("https://ujzkyxh9ek.execute-api.us-east-1.amazonaws.com/default/DynamoFinal", {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                TableName: "TablaFinal",
+                                Item: {
+                                    cedula: cedula,
+                                    apellidos: apellido,
+                                    nombres: nombre,
+                                    correo: correo,
+                                    foto: foto
+                                }
+                            })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Problema de red' + response.statusText);
+                        }
+
+                        const result = await response.json();
+                        console.log('Respuesta:', result);
+                        obtenerUsuarios();
+                    } catch (error) {
+                        console.error('Error:', error);
+                    }
+                }
+            });
+
+        }
+
+        async function obtenerUsuarios() {
+            try {
+                const response = await fetch("https://ujzkyxh9ek.execute-api.us-east-1.amazonaws.com/default/DynamoFinal?TableName=TablaFinal", {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                
+
+                const data = await response.json();
+                mostrarUsuarios(data.Items);
+            } catch (error) {
+                console.log(error);
+            }
+        }
+
+        function mostrarUsuarios(usuarios) {
+            const usersList = document.getElementById('usersList');
+            usersList.innerHTML = '';
+
+            usuarios.forEach(usuario => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <p><strong>Cédula:</strong> ${usuario.cedula}</p>
+                    <p><strong>Nombre:</strong> ${usuario.nombres}</p>
+                    <p><strong>Apellido:</strong> ${usuario.apellidos}</p>
+                    <p><strong>Correo:</strong> ${usuario.correo}</p>
+                    <img src="${usuario.foto}" alt="Foto" style="width: 100px; height: auto;"/>
+                `;
+                usersList.appendChild(li);
+            });
+        }
+        document.addEventListener('DOMContentLoaded', obtenerUsuarios);
+
+    </script>
+</body>
+</html>
